@@ -15,7 +15,7 @@ async def get_open_charity_project(
     """Функция для получения открытого проекта."""
 
     db_charity_project = await session.execute(
-        select(CharityProject).where(CharityProject.fully_invested == False)
+        select(CharityProject).where(CharityProject.fully_invested == 0)
     )
 
     return db_charity_project.scalars().first()
@@ -27,7 +27,7 @@ async def get_open_donation(
     """Функция для получения открытого пожертвования."""
 
     db_donation = await session.execute(
-        select(Donation).where(Donation.fully_invested == False)
+        select(Donation).where(Donation.fully_invested == 0)
     )
 
     return db_donation.scalars().first()

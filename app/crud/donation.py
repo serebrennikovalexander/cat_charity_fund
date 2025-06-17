@@ -13,5 +13,15 @@ class CRUDDonation(CRUDBase):
         )
         return donations.scalars().all()
 
+    async def get_open_donation(
+        self,
+        session: AsyncSession,
+    ):
+        """Функция для получения открытого пожертвования."""
+        db_donation = await session.execute(
+            select(Donation).where(Donation.fully_invested == 0)
+        )
+        return db_donation.scalars().first()
+
 
 donation_crud = CRUDDonation(Donation)

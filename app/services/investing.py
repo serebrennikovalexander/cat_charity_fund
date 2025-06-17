@@ -1,36 +1,11 @@
-from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.crud import charity_project_crud, donation_crud
 from app.models import CharityProject, Donation, User
 from app.schemas.charity_project import CharityProjectCreate
 from app.schemas.donation import DonationCreate
-
-
-async def get_open_charity_project(
-    session: AsyncSession,
-):
-    """Функция для получения открытого проекта."""
-
-    db_charity_project = await session.execute(
-        select(CharityProject).where(CharityProject.fully_invested == 0)
-    )
-
-    return db_charity_project.scalars().first()
-
-
-async def get_open_donation(
-    session: AsyncSession,
-):
-    """Функция для получения открытого пожертвования."""
-
-    db_donation = await session.execute(
-        select(Donation).where(Donation.fully_invested == 0)
-    )
-
-    return db_donation.scalars().first()
 
 
 async def create_charity_project_investing(
@@ -47,7 +22,7 @@ async def create_charity_project_investing(
         new_project_data["full_amount"] > new_project_data["invested_amount"]
     ):
         # Ищем открытое пожертвование
-        donation = await get_open_donation(session)
+        donation = await donation_crud.get_open_donation(session=session)
 
         # Если открытое пожертвование существет то выполняем следующие действия
         if donation is not None:
@@ -64,40 +39,46 @@ async def create_charity_project_investing(
             # Первый случай
             if donation_amount_delta > project_amount_delta:
                 donation.invested_amount += project_amount_delta
-                new_project_data["invested_amount"] = (
-                    charity_project.full_amount
+                # Закрываем проект
+                await charity_project_crud.close_object_use_dict_data(
+                    obj_in=charity_project,
+                    obj_dict=new_project_data,
+                    session=session
                 )
-                new_project_data["fully_invested"] = True
-                new_project_data["close_date"] = datetime.utcnow()
                 break
 
             # Второй случай
             if donation_amount_delta == project_amount_delta:
-                donation.invested_amount = donation.full_amount
-                donation.fully_invested = True
-                new_project_data["invested_amount"] = (
-                    charity_project.full_amount
+                # Закрываем пожертвование
+                await donation_crud.close_object_use_db_data(
+                    db_obj=donation,
+                    session=session
                 )
-                new_project_data["fully_invested"] = True
-                new_project_data["close_date"] = datetime.utcnow()
-                donation.close_date = datetime.utcnow()
+                # Закрываем проект
+                await charity_project_crud.close_object_use_dict_data(
+                    obj_in=charity_project,
+                    obj_dict=new_project_data,
+                    session=session
+                )
                 break
 
             # Третий случай
             if donation_amount_delta < project_amount_delta:
-                donation.invested_amount = donation.full_amount
-                donation.fully_invested = True
-                donation.close_date = datetime.utcnow()
+                # Закрываем пожертвование
+                await donation_crud.close_object_use_db_data(
+                    db_obj=donation,
+                    session=session
+                )
                 new_project_data["invested_amount"] += donation_amount_delta
         else:
             break
 
     db_project = CharityProject(**new_project_data)
 
-    session.add(db_project)
-    await session.commit()
-    await session.refresh(db_project)
-    return db_project
+    return await charity_project_crud.save_object(
+        db_obj=db_project,
+        session=session
+    )
 
 
 async def create_donation_investing(
@@ -118,7 +99,9 @@ async def create_donation_investing(
         new_donation_data["full_amount"] > new_donation_data["invested_amount"]
     ):
         # Ищем открытый проекты
-        charity_project = await get_open_charity_project(session)
+        charity_project = await charity_project_crud.get_open_charity_project(
+            session=session
+        )
 
         # Если открытый проек существет то выполняем следующие действия
         if charity_project is not None:
@@ -136,25 +119,36 @@ async def create_donation_investing(
             # Первый случай
             if project_amount_delta > donation_amount_delta:
                 charity_project.invested_amount += donation_amount_delta
-                new_donation_data["invested_amount"] = new_donation.full_amount
-                new_donation_data["fully_invested"] = True
-                new_donation_data["close_date"] = datetime.utcnow()
+                # Закрываем пожертование
+                await donation_crud.close_object_use_dict_data(
+                    obj_in=new_donation,
+                    obj_dict=new_donation_data,
+                    session=session
+                )
                 break
 
             # Второй случай
             if project_amount_delta == donation_amount_delta:
-                charity_project.invested_amount = charity_project.full_amount
-                charity_project.fully_invested = True
-                new_donation_data["invested_amount"] = new_donation.full_amount
-                new_donation_data["fully_invested"] = True
-                charity_project.close_date = datetime.utcnow()
+                # Закрываем проект
+                await charity_project_crud.close_object_use_db_data(
+                    db_obj=charity_project,
+                    session=session
+                )
+                # Закрываем пожертование
+                await donation_crud.close_object_use_dict_data(
+                    obj_in=new_donation,
+                    obj_dict=new_donation_data,
+                    session=session
+                )
                 break
 
             # Третий случай
             if project_amount_delta < donation_amount_delta:
-                charity_project.invested_amount = charity_project.full_amount
-                charity_project.fully_invested = True
-                charity_project.close_date = datetime.utcnow()
+                # Закрываем проект
+                await charity_project_crud.close_object_use_db_data(
+                    db_obj=charity_project,
+                    session=session
+                )
                 new_donation_data["invested_amount"] += project_amount_delta
 
         else:
@@ -162,7 +156,7 @@ async def create_donation_investing(
 
     db_donation = Donation(**new_donation_data)
 
-    session.add(db_donation)
-    await session.commit()
-    await session.refresh(db_donation)
-    return db_donation
+    return await donation_crud.save_object(
+        db_obj=db_donation,
+        session=session
+    )

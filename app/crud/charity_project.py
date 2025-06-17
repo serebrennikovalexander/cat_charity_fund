@@ -43,8 +43,18 @@ class CRUDCharityProject(CRUDBase):
                 CharityProject.name == project_name
             )
         )
-        db_project_id = db_project_id.scalars().first()
-        return db_project_id
+        return db_project_id.scalars().first()
+
+    async def get_open_charity_project(
+        self,
+        session: AsyncSession,
+    ):
+        """Функция для получения открытого проекта."""
+        db_charity_project = await session.execute(
+            select(CharityProject).where(CharityProject.fully_invested == 0)
+        )
+
+        return db_charity_project.scalars().first()
 
 
 charity_project_crud = CRUDCharityProject(CharityProject)
